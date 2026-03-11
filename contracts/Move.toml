@@ -1,0 +1,12 @@
+[package]
+name = "web3_drive_platform_pro"
+version = "0.0.1"
+
+[addresses]
+web3_drive = "_"
+aptos_framework = "0x1"
+
+[dependencies.AptosFramework]
+git = "https://github.com/aptos-labs/aptos-core.git"
+rev = "mainnet"
+subdir = "aptos-move/framework/aptos-framework"

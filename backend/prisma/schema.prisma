@@ -1,0 +1,75 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String       @id @default(uuid())
+  walletAddress  String       @unique
+  nonce          String       @default(uuid()) // dùng cho Web3 auth
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  files          File[]
+  folders        Folder[]
+  sharedWith     FileShare[]  @relation("SharedWith")
+
+  @@map("users")
+}
+
+model Folder {
+  id        String   @id @default(uuid())
+  name      String
+  ownerId   String
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  owner     User     @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  parent    Folder?  @relation("FolderChildren", fields: [parentId], references: [id])
+  children  Folder[] @relation("FolderChildren")
+  files     File[]
+
+  @@map("folders")
+}
+
+model File {
+  id             String      @id @default(uuid())
+  fileName       String
+  mimeType       String
+  size           Int
+  ownerId        String
+  folderId       String?
+  storageKey     String      // key trong S3/R2
+  storageUrl     String?     // public URL (nếu có)
+  blobId         String      @unique
+  onChainTxHash  String?     // transaction hash sau khi ghi on-chain
+  onChainStatus  String      @default("pending") // pending | confirmed | failed
+  isPublic       Boolean     @default(false)
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  owner          User        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  folder         Folder?     @relation(fields: [folderId], references: [id])
+  shares         FileShare[]
+
+  @@map("files")
+}
+
+model FileShare {
+  id          String   @id @default(uuid())
+  fileId      String
+  sharedWithId String
+  permission  String   @default("read") // read | write
+  createdAt   DateTime @default(now())
+
+  file        File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  sharedWith  User     @relation("SharedWith", fields: [sharedWithId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, sharedWithId])
+  @@map("file_shares")
+}
