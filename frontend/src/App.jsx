@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { connectPetraWallet, getConnectedAddress, getPetra, signMessage, submitTransaction } from './lib/petra.js';
+import { useWallet } from '@aptos-labs/wallet-adapter-react';
+import { signMessageWithWallet, submitTransactionWithWallet } from './lib/petra.js';
 import {
   createFolder, deleteFile, deleteFolder, fetchFiles, fetchFolders, fetchHealth,
   getDownloadUrl, getMe, getNonce, getToken, setToken, shareFile, updateOnChainStatus,
@@ -31,7 +32,7 @@ function useToasts() {
   return { toasts, toast };
 }
 
-function ConnectScreen({ onConnect, loading, authError }) {
+function ConnectScreen({ onConnect, loading, authError, petraInstalled }) {
   return (
     <div className="connect-screen">
       <h1>Web3<span> Drive</span><br />Platform Pro</h1>
@@ -40,7 +41,7 @@ function ConnectScreen({ onConnect, loading, authError }) {
         <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '14px' }} onClick={onConnect} disabled={loading}>
           {loading ? 'Đang kết nối...' : <><Icon.Wallet /> Kết nối Petra Wallet</>}
         </button>
-        {!getPetra() && <p style={{ fontSize: 12, color: 'var(--yellow)', marginTop: 12, textAlign: 'center' }}>⚠️ Chưa phát hiện Petra extension</p>}
+        {!petraInstalled && <p style={{ fontSize: 12, color: 'var(--yellow)', marginTop: 12, textAlign: 'center' }}>⚠️ Chưa phát hiện Petra extension</p>}
         {authError && <p style={{ fontSize: 12, color: 'var(--danger)', marginTop: 12, textAlign: 'center' }}>{authError}</p>}
       </div>
     </div>
@@ -49,6 +50,17 @@ function ConnectScreen({ onConnect, loading, authError }) {
 
 export default function App() {
   const { toasts, toast } = useToasts();
+  const {
+    connect,
+    disconnect,
+    account,
+    connected,
+    wallet,
+    signMessage,
+    signAndSubmitTransaction,
+    wallets,
+  } = useWallet();
+
   const [walletAddress, setWalletAddress] = useState('');
   const [authed, setAuthed] = useState(Boolean(getToken()));
   const [connecting, setConnecting] = useState(false);
@@ -63,7 +75,10 @@ export default function App() {
   const [healthInfo, setHealthInfo] = useState(null);
   const [me, setMe] = useState(null);
   const [shareState, setShareState] = useState({ open: false, file: null, walletAddress: '', permission: 'read' });
+  const [authenticating, setAuthenticating] = useState(false);
   const fileInputRef = useRef(null);
+
+  const petraInstalled = useMemo(() => wallets.some((item) => item.name?.toLowerCase().includes('petra')), [wallets]);
 
   const refresh = useCallback(async () => {
     if (!getToken()) return;
@@ -94,36 +109,56 @@ export default function App() {
   }, [authed, refresh]);
 
   useEffect(() => {
-    if (!authed) return;
-    getConnectedAddress().then((address) => {
-      if (address) setWalletAddress(address.toLowerCase());
-    }).catch(() => {});
-  }, [authed]);
+    if (account?.address) {
+      setWalletAddress(account.address.toString().toLowerCase());
+    }
+  }, [account]);
+
+  useEffect(() => {
+    async function authenticateConnectedWallet() {
+      if (!connected || !account?.address || authed || authenticating) return;
+
+      try {
+        setAuthenticating(true);
+        const address = account.address.toString().toLowerCase();
+        setWalletAddress(address);
+
+        const nonceRes = await getNonce(address);
+        const signed = await signMessageWithWallet({ signMessage }, nonceRes.message, nonceRes.nonce);
+        const verifyRes = await verifySignature({
+          walletAddress: address,
+          nonce: nonceRes.nonce,
+          signature: signed.signature,
+          fullMessage: signed.fullMessage,
+        });
+
+        setToken(verifyRes.token);
+        setAuthed(true);
+        setAuthError('');
+        toast('Xác thực ví thành công', 'success');
+      } catch (error) {
+        setAuthError(error.message || 'Xác thực ví thất bại');
+        toast(error.message || 'Xác thực ví thất bại', 'error');
+      } finally {
+        setAuthenticating(false);
+        setConnecting(false);
+      }
+    }
+
+    authenticateConnectedWallet();
+  }, [account, authed, authenticating, connected, signMessage, toast]);
 
   async function handleConnect() {
     setConnecting(true);
     setAuthError('');
 
     try {
-      const address = (await connectPetraWallet()).toLowerCase();
-      const nonceRes = await getNonce(address);
-      const signed = await signMessage(nonceRes.message);
-      const verifyRes = await verifySignature({
-        walletAddress: address,
-        nonce: nonceRes.nonce,
-        signature: signed.signature,
-        publicKey: signed.publicKey,
-        fullMessage: signed.fullMessage,
-      });
-
-      setToken(verifyRes.token);
-      setWalletAddress(address);
-      setAuthed(true);
-      toast('Xác thực ví thành công', 'success');
+      const petraWallet = wallets.find((item) => item.name?.toLowerCase().includes('petra'));
+      if (!petraWallet) throw new Error('Chưa tìm thấy Petra Wallet');
+      await connect(petraWallet.name);
     } catch (error) {
-      setAuthError(error.message);
-      toast(error.message, 'error');
-    } finally {
+      setAuthError(error.message || 'Kết nối Petra thất bại');
+      toast(error.message || 'Kết nối Petra thất bại', 'error');
       setConnecting(false);
     }
   }
@@ -153,7 +188,7 @@ export default function App() {
       try {
         const MODULE = import.meta.env.VITE_APTOS_MODULE_ADDRESS;
         if (!MODULE) throw new Error('missing module');
-        const txHash = await submitTransaction({
+        const txHash = await submitTransactionWithWallet({ signAndSubmitTransaction }, {
           type: 'entry_function_payload',
           function: `${MODULE}::drive_metadata::add_file`,
           type_arguments: [],
@@ -231,7 +266,7 @@ export default function App() {
 
   const storageUsed = useMemo(() => files.reduce((sum, item) => sum + (item.size || 0), 0), [files]);
 
-  function logout() {
+  async function logout() {
     setToken(null);
     setAuthed(false);
     setWalletAddress('');
@@ -240,6 +275,9 @@ export default function App() {
     setFolders([]);
     setFolderPath([]);
     setCurrentFolder(null);
+    try {
+      if (connected) await disconnect();
+    } catch {}
   }
 
   function openFolder(folder) {
@@ -257,7 +295,9 @@ export default function App() {
     setFolderPath((prev) => prev.slice(0, index + 1));
   }
 
-  if (!authed) return <ConnectScreen onConnect={handleConnect} loading={connecting} authError={authError} />;
+  if (!authed) {
+    return <ConnectScreen onConnect={handleConnect} loading={connecting || authenticating} authError={authError} petraInstalled={petraInstalled} />;
+  }
 
   return (
     <div className="app">
