@@ -38,9 +38,14 @@ router.post('/verify', async (req, res) => {
     if (user.nonce !== nonce) return res.status(401).json({ error: 'Nonce không khớp' });
 
     const expectedMessage = buildAuthMessage(walletAddress, nonce);
-    const normalizedMessage = fullMessage || expectedMessage;
+    const normalizedMessage = String(fullMessage || expectedMessage);
 
-    if (normalizedMessage !== expectedMessage) {
+    const looksValidMessage =
+      normalizedMessage === expectedMessage ||
+      normalizedMessage.includes(expectedMessage) ||
+      (normalizedMessage.includes(String(walletAddress)) && normalizedMessage.includes(String(nonce)));
+
+    if (!looksValidMessage) {
       return res.status(401).json({ error: 'Message xác thực không hợp lệ' });
     }
 
@@ -56,7 +61,8 @@ router.post('/verify', async (req, res) => {
       token,
       userId: user.id,
       walletAddress: user.walletAddress,
-      verificationMode: publicKey ? 'signature+publicKey' : 'adapter-signature-fallback'
+      verificationMode: publicKey ? 'signature+publicKey' : 'adapter-signature-fallback',
+      acceptedMessage: normalizedMessage
     });
   } catch (err) {
     console.error(err);
