@@ -1,131 +1,116 @@
-# Web3 Drive Platform Pro v2.0
+# Web3 Drive Platform Pro
 
-> Nền tảng lưu trữ phi tập trung trên Aptos — React + Node.js + PostgreSQL + Cloudflare R2 + Move Contract
+MVP full-stack cho web3 drive trên Aptos: frontend React/Vite, backend Express, auth Petra nonce → signature → JWT, CRUD folders/files có auth, storage qua Cloudflare R2 nếu cấu hình đủ và local fallback nếu chưa có hạ tầng.
 
----
+## Trạng thái hiện tại
 
-## 🏗️ Kiến trúc
+Đã chạy được ở mức MVP:
+- Backend Express tách `routes/`, `middleware/`, `lib/`
+- Auth flow Petra: `POST /auth/nonce` → ký message → `POST /auth/verify` → JWT
+- Verify chữ ký Petra ở backend bằng `tweetnacl`
+- CRUD tối thiểu cho folders/files có auth
+- Download file từ R2 presigned URL hoặc local direct download
+- Frontend nối flow auth, list/create folder, list/upload/delete/share file, loading/error/toast cơ bản
+- Prisma/Postgres vẫn được support khi có `DATABASE_URL`
+- Nếu chưa có Postgres thì backend fallback sang `backend/data/metadata.json`
 
-```
+Chưa nên claim là production hoàn chỉnh vì còn thiếu:
+- refresh token / session revoke / rate limiting
+- antivirus scan / file hash verification
+- pagination / search / quota thật
+- contract module address mặc định chưa cấu hình sẵn
+- test automation còn chưa có
+
+## Cấu trúc
+
+```text
 web3-drive-platform-pro/
-├── frontend/          # React + Vite
-│   └── src/
-│       ├── App.jsx            # UI chính: upload, folder, share, on-chain
-│       ├── styles.css         # Design system production-grade
-│       └── lib/
-│           ├── api.js         # Axios-free fetch wrapper + JWT auth
-│           └── petra.js       # Petra wallet: connect, sign, submit tx
-│
-├── backend/           # Node.js + Express + Prisma
+├── backend/
 │   ├── prisma/
-│   │   └── schema.prisma      # users, files, folders, file_shares
 │   └── src/
-│       ├── server.js          # Entry point
+│       ├── lib/
 │       ├── middleware/
-│       │   └── auth.js        # JWT verify middleware
 │       ├── routes/
-│       │   ├── auth.js        # POST /auth/nonce + /auth/verify + GET /auth/me
-│       │   ├── files.js       # CRUD files + download presigned + share
-│       │   └── folders.js     # CRUD folders
-│       └── lib/
-│           ├── prisma.js      # Prisma client singleton
-│           └── storage.js     # Cloudflare R2 (S3) + local fallback
-│
-└── contracts/         # Move smart contract
-    └── sources/
-        └── drive_metadata.move  # init, add_file, delete_file, share_access, events
+│       └── server.js
+├── frontend/
+│   └── src/
+└── contracts/
 ```
 
----
+## Chạy local
 
-## ⚡ Tính năng mới (v2.0)
-
-### Backend
-- ✅ **PostgreSQL + Prisma** — thay thế metadata.json mock
-- ✅ **Cloudflare R2 storage** — thay thế local blobs
-- ✅ **JWT Authentication** — Web3 native: nonce → Petra sign → JWT
-- ✅ **Folder system** — tạo, xóa, nested folders
-- ✅ **File sharing** — chia sẻ quyền read/write theo địa chỉ ví
-- ✅ **Presigned download URL** — secure download từ R2
-- ✅ **On-chain status update** — track txHash sau khi ghi contract
-
-### Frontend
-- ✅ **Auth flow đầy đủ** — connect Petra → sign nonce → JWT session
-- ✅ **Grid/List view** — chuyển đổi layout
-- ✅ **Drag & drop upload** — kéo file trực tiếp vào trang
-- ✅ **Folder navigation** — breadcrumb, double-click mở folder
-- ✅ **Share modal** — nhập địa chỉ ví để chia sẻ
-- ✅ **Toast notifications** — feedback mọi action
-- ✅ **Storage stats** — hiển thị dung lượng đã dùng
-
-### Smart Contract
-- ✅ **Events** — `FileAdded`, `FileDeleted`, `FileShared`
-- ✅ **Soft delete** — giữ lịch sử on-chain
-- ✅ **Access control** — `share_access`, `revoke_access`
-- ✅ **View functions** — `get_file_count`, `has_access`
-
----
-
-## 🚀 Cài đặt
-
-### 1. Backend
+### 1) Backend
 
 ```bash
 cd backend
 cp .env.example .env
-# Điền DATABASE_URL, JWT_SECRET, R2 credentials vào .env
-
 npm install
-npx prisma db push      # Tạo tables trong PostgreSQL
 npm run dev
 ```
 
-### 2. Frontend
+Biến môi trường quan trọng:
+
+```env
+DATABASE_URL=postgresql://USER:PASSWORD@localhost:5432/web3drive # optional nếu muốn dùng Prisma/Postgres
+JWT_SECRET=change-me
+JWT_EXPIRES_IN=7d
+PORT=8787
+
+# optional cho Cloudflare R2
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+R2_BUCKET_NAME=
+R2_PUBLIC_URL=
+```
+
+Nếu có Postgres:
+
+```bash
+npm run db:generate
+npm run db:push
+```
+
+### 2) Frontend
 
 ```bash
 cd frontend
-cp .env.example .env    # VITE_API_BASE_URL=http://localhost:8787
-
+cp .env.example .env
 npm install
 npm run dev
 ```
 
-### 3. Deploy Contract (Aptos)
+`.env` mẫu:
+
+```env
+VITE_API_BASE_URL=http://localhost:8787
+VITE_APTOS_MODULE_ADDRESS=0x_your_module_address
+```
+
+## Build
 
 ```bash
-cd contracts
-aptos move compile
-aptos move publish --profile default
-# Sau đó cập nhật MODULE_ADDRESS trong frontend/src/App.jsx
+cd ..
+npm run build
 ```
 
----
+## API chính
 
-## 🔧 Biến môi trường
+- `POST /auth/nonce`
+- `POST /auth/verify`
+- `GET /auth/me`
+- `GET/POST/DELETE /api/folders`
+- `GET /api/files`
+- `POST /api/files/upload`
+- `GET /api/files/:id/download`
+- `DELETE /api/files/:id`
+- `PATCH /api/files/:id/onchain`
+- `POST /api/files/:id/share`
 
-### Backend `.env`
-```
-DATABASE_URL=postgresql://USER:PASS@localhost:5432/web3drive
-JWT_SECRET=your-secret-key
-R2_ACCOUNT_ID=...
-R2_ACCESS_KEY_ID=...
-R2_SECRET_ACCESS_KEY=...
-R2_BUCKET_NAME=web3-drive-files
-R2_PUBLIC_URL=https://...r2.dev
-```
+## Gợi ý bước tiếp theo
 
-### Frontend `.env`
-```
-VITE_API_BASE_URL=http://localhost:8787
-```
-
----
-
-## 🗺️ Roadmap tiếp theo
-
-- [ ] File preview (image/PDF/video in-browser)
-- [ ] IPFS integration option
-- [ ] On-chain file hash verification
-- [ ] Aptos Indexer để query lịch sử on-chain
-- [ ] Mobile responsive sidebar
-- [ ] Rate limiting + file virus scan
+1. Thêm rate limit + request logging + validation schema (zod/joi)
+2. Viết test integration cho auth/files/folders
+3. Thêm rename/move folder-file và recursive tree API
+4. Lưu file hash + verify on-chain thật
+5. Hoàn thiện shared-with-me view ở frontend

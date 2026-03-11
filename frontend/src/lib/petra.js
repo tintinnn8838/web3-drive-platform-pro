@@ -9,13 +9,28 @@ export async function connectPetraWallet() {
   return response?.address || '';
 }
 
-export async function signMessage(address, message) {
+export async function getConnectedAddress() {
+  const petra = getPetra();
+  if (!petra) return '';
+
+  try {
+    const response = await petra.account();
+    return response?.address || '';
+  } catch {
+    return '';
+  }
+}
+
+export async function signMessage(message) {
   const petra = getPetra();
   if (!petra) throw new Error('Petra Wallet chưa cài');
 
-  const nonce = crypto.randomUUID().slice(0, 8);
-  const result = await petra.signMessage({ message, nonce });
-  return { signature: result?.signature || '', nonce, fullMessage: result?.fullMessage || message };
+  const result = await petra.signMessage({ message, nonce: 'web3drive' });
+  return {
+    signature: result?.signature || '',
+    publicKey: result?.publicKey || '',
+    fullMessage: result?.fullMessage || message,
+  };
 }
 
 export async function submitTransaction(payload) {

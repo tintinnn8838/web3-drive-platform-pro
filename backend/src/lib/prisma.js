@@ -1,7 +1,11 @@
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient({
-  log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
-});
+let prismaSingleton = null;
 
-export default prisma;
+if (process.env.DATABASE_URL) {
+  prismaSingleton = new PrismaClient({
+    log: process.env.NODE_ENV === 'development' ? ['query', 'error', 'warn'] : ['error'],
+  });
+}
+
+export default prismaSingleton;
