@@ -321,6 +321,14 @@ export default function App() {
           {healthInfo && <span className={`chip ${healthInfo.storage === 'cloudflare-r2' ? 'green' : 'yellow'}`}>{healthInfo.storage}</span>}
           {healthInfo && <span className="chip blue">{healthInfo.database}</span>}
           <span className="chip blue">{shorten(walletAddress || me?.walletAddress)}</span>
+          <a
+            href="https://docs.shelby.xyz/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="btn btn-ghost btn-sm"
+          >
+            Documentation
+          </a>
           <button className="btn btn-ghost btn-sm" onClick={logout}>Đăng xuất</button>
         </div>
       </header>
