@@ -9,10 +9,12 @@ export async function signMessageWithWallet(wallet, message, nonce) {
   });
 
   return {
-    signature: response?.signature || '',
+    signature: response?.signature || response?.signatureHex || '',
+    publicKey: response?.publicKey || response?.publicKeyHex || '',
     fullMessage: response?.fullMessage || message,
     nonce,
     message,
+    raw: response,
   };
 }
 

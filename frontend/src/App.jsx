@@ -152,6 +152,7 @@ export default function App() {
         walletAddress: address,
         nonce: nonceRes.nonce,
         signature: signed.signature,
+        publicKey: signed.publicKey,
         fullMessage: signed.fullMessage,
       });
 
