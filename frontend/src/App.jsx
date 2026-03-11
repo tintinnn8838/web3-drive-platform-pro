@@ -32,15 +32,19 @@ function useToasts() {
   return { toasts, toast };
 }
 
-function ConnectScreen({ onConnect, loading, authError, petraInstalled }) {
+function ConnectScreen({ onConnect, onSignIn, loading, authError, petraInstalled, connected, walletAddress }) {
   return (
     <div className="connect-screen">
       <h1>Web3<span> Drive</span><br />Platform Pro</h1>
       <p>MVP lưu file theo folder với Petra auth, backend JWT và local/R2 storage.</p>
       <div className="connect-card">
-        <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '14px' }} onClick={onConnect} disabled={loading}>
-          {loading ? 'Đang kết nối...' : <><Icon.Wallet /> Kết nối Petra Wallet</>}
+        <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '14px' }} onClick={onConnect} disabled={loading || connected}>
+          {connected ? <>✅ Petra đã kết nối</> : loading ? 'Đang kết nối...' : <><Icon.Wallet /> Kết nối Petra Wallet</>}
         </button>
+        <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center', padding: '14px', marginTop: 12 }} onClick={onSignIn} disabled={loading || !connected}>
+          {loading ? 'Đang xác thực...' : 'Ký message / Đăng nhập ví'}
+        </button>
+        {walletAddress && <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 12, textAlign: 'center' }}>Ví: {shorten(walletAddress)}</p>}
         {!petraInstalled && <p style={{ fontSize: 12, color: 'var(--yellow)', marginTop: 12, textAlign: 'center' }}>⚠️ Chưa phát hiện Petra extension</p>}
         {authError && <p style={{ fontSize: 12, color: 'var(--danger)', marginTop: 12, textAlign: 'center' }}>{authError}</p>}
       </div>
@@ -114,40 +118,6 @@ export default function App() {
     }
   }, [account]);
 
-  useEffect(() => {
-    async function authenticateConnectedWallet() {
-      if (!connected || !account?.address || authed || authenticating) return;
-
-      try {
-        setAuthenticating(true);
-        const address = account.address.toString().toLowerCase();
-        setWalletAddress(address);
-
-        const nonceRes = await getNonce(address);
-        const signed = await signMessageWithWallet({ signMessage }, nonceRes.message, nonceRes.nonce);
-        const verifyRes = await verifySignature({
-          walletAddress: address,
-          nonce: nonceRes.nonce,
-          signature: signed.signature,
-          fullMessage: signed.fullMessage,
-        });
-
-        setToken(verifyRes.token);
-        setAuthed(true);
-        setAuthError('');
-        toast('Xác thực ví thành công', 'success');
-      } catch (error) {
-        setAuthError(error.message || 'Xác thực ví thất bại');
-        toast(error.message || 'Xác thực ví thất bại', 'error');
-      } finally {
-        setAuthenticating(false);
-        setConnecting(false);
-      }
-    }
-
-    authenticateConnectedWallet();
-  }, [account, authed, authenticating, connected, signMessage, toast]);
-
   async function handleConnect() {
     setConnecting(true);
     setAuthError('');
@@ -156,10 +126,43 @@ export default function App() {
       const petraWallet = wallets.find((item) => item.name?.toLowerCase().includes('petra'));
       if (!petraWallet) throw new Error('Chưa tìm thấy Petra Wallet');
       await connect(petraWallet.name);
+      toast('Đã kết nối Petra. Bấm "Ký message / Đăng nhập ví" để xác thực.', 'info');
     } catch (error) {
       setAuthError(error.message || 'Kết nối Petra thất bại');
       toast(error.message || 'Kết nối Petra thất bại', 'error');
+    } finally {
       setConnecting(false);
+    }
+  }
+
+  async function handleSignIn() {
+    if (authenticating) return;
+
+    try {
+      if (!connected || !account?.address) throw new Error('Cần kết nối Petra trước');
+
+      setAuthenticating(true);
+      setAuthError('');
+      const address = account.address.toString().toLowerCase();
+      setWalletAddress(address);
+
+      const nonceRes = await getNonce(address);
+      const signed = await signMessageWithWallet({ signMessage }, nonceRes.message, nonceRes.nonce);
+      const verifyRes = await verifySignature({
+        walletAddress: address,
+        nonce: nonceRes.nonce,
+        signature: signed.signature,
+        fullMessage: signed.fullMessage,
+      });
+
+      setToken(verifyRes.token);
+      setAuthed(true);
+      toast('Xác thực ví thành công', 'success');
+    } catch (error) {
+      setAuthError(error.message || 'Xác thực ví thất bại');
+      toast(error.message || 'Xác thực ví thất bại', 'error');
+    } finally {
+      setAuthenticating(false);
     }
   }
 
@@ -296,7 +299,17 @@ export default function App() {
   }
 
   if (!authed) {
-    return <ConnectScreen onConnect={handleConnect} loading={connecting || authenticating} authError={authError} petraInstalled={petraInstalled} />;
+    return (
+      <ConnectScreen
+        onConnect={handleConnect}
+        onSignIn={handleSignIn}
+        loading={connecting || authenticating}
+        authError={authError}
+        petraInstalled={petraInstalled}
+        connected={connected}
+        walletAddress={walletAddress}
+      />
+    );
   }
 
   return (
